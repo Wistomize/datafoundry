@@ -30,8 +30,10 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   artifactRecordToSummary,
   type ArtifactRecord,
+  type CheckpointRecord,
   type ConfigResourceKind,
   type ConfigResourceRecord,
+  type ContextPackageSnapshotRecord,
   type ConversationMessageRecord,
   type ConversationSummaryRecord,
   type DataSourceRecord,
@@ -175,6 +177,9 @@ const routeConfigRequest = async (
   }
   if (root === "sessions") {
     return handleSessionRequest(request, segments.slice(1), context);
+  }
+  if (root === "checkpoints") {
+    return handleCheckpointRequest(request, segments.slice(1), context);
   }
   if (root === "jobs") {
     return handleJobRequest(request, segments.slice(1), context);
@@ -391,6 +396,19 @@ const handleSessionRequest = async (
     });
     return ok(sessionBranchCreatedDto(created), 201);
   }
+  if (action === "checkpoints") {
+    if (request.method !== "GET") {
+      return methodNotAllowed();
+    }
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+    const limit = clampInteger(Number.parseInt(requestUrl.searchParams.get("limit") ?? "", 10), 1, 500, 200);
+    return ok({
+      sessionId,
+      checkpoints: context.metadataStore.checkpoints
+        .listBySession({ user_id: context.userId, session_id: sessionId, limit })
+        .map(contextCheckpointDto)
+    });
+  }
   if (action !== "conversation") {
     return methodNotAllowed();
   }
@@ -461,6 +479,39 @@ const handleSessionRequest = async (
     restorableCustomEvents: runEventGroups.flatMap(({ runId, events }) =>
       restorableCustomEventDtos(runId, events)
     )
+  });
+};
+
+const handleCheckpointRequest = async (
+  request: IncomingMessage,
+  segments: string[],
+  context: Required<ConfigApiContext>
+): Promise<ConfigApiResponse> => {
+  const checkpointId = segments[0];
+  const action = segments[1];
+  if (!checkpointId) {
+    return methodNotAllowed();
+  }
+  if (request.method !== "GET") {
+    return methodNotAllowed();
+  }
+  const checkpoint = context.metadataStore.checkpoints.get({
+    user_id: context.userId,
+    checkpoint_id: checkpointId
+  });
+  if (!action) {
+    return ok(contextCheckpointDto(checkpoint));
+  }
+  if (action !== "context-package") {
+    return methodNotAllowed();
+  }
+  const snapshot = context.metadataStore.contextPackageSnapshots.get({
+    user_id: context.userId,
+    id: checkpoint.context_package_id
+  });
+  return ok({
+    checkpoint: contextCheckpointDto(checkpoint),
+    contextPackage: contextPackageSnapshotDto(snapshot)
   });
 };
 
@@ -1863,6 +1914,37 @@ const runCheckpointDto = (input: {
     ...(input.run.error_message ? { errorMessage: input.run.error_message } : {})
   };
 };
+
+const contextCheckpointDto = (checkpoint: CheckpointRecord): Record<string, unknown> => ({
+  id: checkpoint.id,
+  sessionId: checkpoint.session_id,
+  runId: checkpoint.run_id,
+  branchId: checkpoint.branch_id,
+  eventSeq: checkpoint.event_seq,
+  contextPackageId: checkpoint.context_package_id,
+  contextPackageRevision: checkpoint.context_package_revision,
+  kind: checkpoint.kind,
+  status: checkpoint.status,
+  label: checkpoint.label,
+  ...(checkpoint.context_plan_id ? { contextPlanId: checkpoint.context_plan_id } : {}),
+  ...(checkpoint.parent_checkpoint_id ? { parentCheckpointId: checkpoint.parent_checkpoint_id } : {}),
+  ...(checkpoint.step_number !== undefined ? { stepNumber: checkpoint.step_number } : {}),
+  ...(checkpoint.step_id ? { stepId: checkpoint.step_id } : {}),
+  ...(checkpoint.tool_call_id ? { toolCallId: checkpoint.tool_call_id } : {}),
+  ...(checkpoint.message_position !== undefined ? { messagePosition: checkpoint.message_position } : {}),
+  createdAt: checkpoint.created_at
+});
+
+const contextPackageSnapshotDto = (snapshot: ContextPackageSnapshotRecord): Record<string, unknown> => ({
+  id: snapshot.id,
+  sessionId: snapshot.session_id,
+  runId: snapshot.run_id,
+  packageId: snapshot.package_id,
+  revision: snapshot.revision,
+  payload: parseRecord(snapshot.payload_json),
+  ...(snapshot.plan_json ? { plan: parseRecord(snapshot.plan_json) } : {}),
+  createdAt: snapshot.created_at
+});
 
 const RESTORABLE_CUSTOM_EVENT_NAMES = new Set([
   "token_usage",

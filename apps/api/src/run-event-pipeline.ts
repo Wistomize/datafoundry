@@ -2,10 +2,12 @@ import { EventType, type BaseEvent } from "@ag-ui/client";
 import type { RunEventWriter } from "@datafoundry/metadata";
 
 import type { ConversationMemoryEventObserver } from "./conversation-memory.js";
+import type { RunCheckpointProjector } from "./run-checkpoint-projector.js";
 import type { TaskPlanProjector } from "./task-plan-projector.js";
 import type { ToolCallResultBridge } from "./tool-call-result-bridge.js";
 
 type RunEventPipelineInput = {
+  checkpointProjector?: RunCheckpointProjector;
   conversationMemoryObserver: ConversationMemoryEventObserver;
   runEventWriter: RunEventWriter;
   runId: string;
@@ -55,12 +57,13 @@ export class RunEventPipeline {
   }
 
   private deliver(event: BaseEvent): void {
-    this.input.runEventWriter.write({
+    const envelope = this.input.runEventWriter.write({
       user_id: this.input.userId,
       run_id: this.input.runId,
       session_id: this.input.sessionId,
       event
     });
+    this.input.checkpointProjector?.observe(envelope);
     this.input.conversationMemoryObserver.observe(event);
     this.input.sink(event);
   }

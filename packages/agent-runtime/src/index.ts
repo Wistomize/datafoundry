@@ -35,6 +35,7 @@ import { createToolObservationBoundary } from "./context/tool-observation/tool-o
 import {
   createMastraContextProcessorBoundary
 } from "./context/protocol/mastra/mastra-context-processor-boundary.js";
+import type { ContextPackageRecorder } from "./context/protocol/mastra/mastra-context-budget-processor.js";
 import { ToolObservationDispatcher } from "./context/tool-observation/tool-observation-dispatcher.js";
 import { createAgUiContextEventSink } from "./context/protocol/ag-ui/ag-ui-context-event-sink.js";
 import {
@@ -74,6 +75,9 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
 export type { AgentRunContext, AgentRunContextInput, AgUiEventEmitter } from "./types.js";
+export type { ContextPackage } from "./context/inventory/context-package.js";
+export type { ContextPlan } from "./context/inventory/context-plan.js";
+export type { ContextPackageRecorder } from "./context/protocol/mastra/mastra-context-budget-processor.js";
 export type AgentContextItem = ContextItem;
 export type AgentContextSourceMetadata = ContextSourceMetadata;
 export type CreateAgentContextItemInput = CreateContextItemInput;
@@ -191,6 +195,7 @@ export type AgentLongTermMemoryRecord = {
 export type CreateDataFoundryInput = {
   abortSignal?: AbortSignal | undefined;
   artifactService?: ArtifactService;
+  contextPackageRecorder?: ContextPackageRecorder;
   dataGateway: DataGateway;
   emitter: AgUiEventEmitter;
   fileAssetService?: FileAssetService;
@@ -309,6 +314,7 @@ export const createDataFoundry = async (
   const mastraContextProcessors = createMastraContextProcessorBoundary({
     dispatcher,
     eventSink: contextEventSink,
+    ...(input.contextPackageRecorder ? { contextPackageRecorder: input.contextPackageRecorder } : {}),
     ...(evidenceRuntimeSource ? { additionalRuntimeSources: [evidenceRuntimeSource] } : {}),
     ...(input.longTermMemory ? { longTermMemory: input.longTermMemory } : {}),
     ...(input.modelContextProfile ? { modelContextProfile: input.modelContextProfile } : {}),
